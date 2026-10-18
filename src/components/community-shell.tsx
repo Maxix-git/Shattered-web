@@ -25,7 +25,7 @@ import {
 } from "@/lib/community-data";
 
 const navigation = [
-  { to: "/", label: "Overview", icon: LayoutDashboard },
+  { to: "/", label: "Shattered", icon: LayoutDashboard },
   { to: "/players", label: "Players", icon: Users },
   { to: "/bounties", label: "Bounty board", icon: Crosshair },
   { to: "/leaderboards", label: "Leaderboards", icon: Trophy },

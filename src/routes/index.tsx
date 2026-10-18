@@ -3,13 +3,13 @@ import { Overview } from "@/components/community-pages";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Overview | Shattered SMP" },
+      { title: "Shattered SMP — semi-anarchy survival" },
       {
         name: "description",
         content:
           "Explore overview on Shattered SMP, an anarchy survival community. Preview experience with sample data.",
       },
-      { property: "og:title", content: "Overview | Shattered SMP" },
+      { property: "og:title", content: "Shattered SMP — semi-anarchy survival" },
       {
         property: "og:description",
         content: "Your world, your rivals, your legacy. Discover overview on Shattered SMP.",

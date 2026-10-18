@@ -1,6 +1,5 @@
-// Data layer. Ships with sample data so the UI always renders, and hydrates
-// live data from the backend (/api/live, /api/me) when reachable. The backend
-// reads the same SQLite database the Discord bot and the plugin write to.
+// Data layer. Only "Shard" (the site assistant) ships as a placeholder player;
+// everything else renders from live backend data (/api/live, /api/me).
 
 export type Player = {
   name: string;
@@ -58,29 +57,14 @@ const rankFor = (kills: number, hours: number) => {
 // ---- sample fallbacks (only visible when the backend is unreachable) ----
 export const players: [Player, ...Player[]] = [
   {
-    name: "VoidWalker", faction: "The Revenants", kills: 1248, deaths: 86, streak: 24, hours: 892,
-    rank: "Legend", online: true, tone: "jade", face: "V", wealth: 184200, honor: 3200, bountyClaims: 2, openBounties: 0,
-  },
-  {
-    name: "AshenKnight", faction: "Obsidian Order", kills: 1106, deaths: 102, streak: 18, hours: 1042,
-    rank: "Titan", online: true, tone: "rose", face: "A", wealth: 216800, honor: 2850, bountyClaims: 1, openBounties: 1,
+    name: "Shard", faction: "Unaffiliated", kills: 0, deaths: 0, streak: 0, hours: 0,
+    rank: "Sentinel", online: true, tone: "jade", face: "S", wealth: 0, honor: 0, bountyClaims: 0, openBounties: 0,
   },
 ];
 
-export const factions: [Faction, ...Faction[]] = [
-  {
-    name: "The Revenants", tag: "REV", members: 24, kills: 8420, tone: "jade",
-    description: "Built from the ashes. Bound by loyalty.", alliance: "Nomads", rival: "Obsidian Order",
-  },
-];
+export const factions: Faction[] = [];
 
-export const posts: Post[] = [
-  {
-    id: "sample-1", title: "Backend offline — sample post", category: "Community",
-    author: "Shattered Team", time: "now", replies: 0,
-    body: "You are seeing sample data because the live backend could not be reached.",
-  },
-];
+export const posts: Post[] = [];
 
 export const news: NewsItem[] = [];
 export const feed: FeedEntry[] = [];

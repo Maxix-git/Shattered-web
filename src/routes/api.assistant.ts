@@ -8,7 +8,7 @@ export const Route = createFileRoute("/api/assistant")({
       POST: async ({ request }) => {
         let body: Record<string, any> = {};
         try { body = await request.json(); } catch {}
-        const message = typeof body.message === "string" ? body.message.trim().slice(0, 500) : "";
+        const message = typeof body['message'] === "string" ? body['message'].trim().slice(0, 500) : "";
         if (!message) return Response.json({ ok: false, error: "message required" }, { status: 400 });
         const api = (process.env["SITE_API_URL"] || "").replace(/\/$/, "");
         if (!api) return Response.json({ ok: false, error: "assistant not configured" }, { status: 503 });

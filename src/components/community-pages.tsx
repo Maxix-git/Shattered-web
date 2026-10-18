@@ -780,7 +780,11 @@ export function FactionsPage() {
         title="Factions & teams"
         subtitle="Find your people. Build something worth defending. Create yours on Discord with /faction create — owners manage it here."
       />
-      <FactionList />
+      {factions.length ? (
+        <FactionList />
+      ) : (
+        <div className="empty-state">No factions yet. Create the first one from your dashboard once you're signed in.</div>
+      )}
     </>
   );
 }
