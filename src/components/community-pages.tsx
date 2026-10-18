@@ -23,6 +23,8 @@ import {
   Package,
   Gem,
   Lock,
+  Gauge,
+  Activity,  MemoryStick,
   Check,
   Flag,
   X,
@@ -383,6 +385,8 @@ export function PlayersPage() {
             <div className="player-card-body">
               <Avatar player={p} large />
               <span className={`badge ${p.tone}`}>{p.rank}</span>
+              {p.owner && <span className="badge owner-badge">👑 OWNER</span>}
+              {p.donor && <span className="badge donor-badge">💎 DONOR</span>}
               <h2>{p.name}</h2>
               <p>{p.faction}</p>
               <div className="player-card-stats">
@@ -462,6 +466,8 @@ export function ProfilePage({ name }: { name: string }) {
         <div>
           <div className="profile-title">
             <h1>{p.name}</h1>
+            {p.owner && <span className="badge owner-badge">👑 OWNER</span>}
+            {p.donor && <span className="badge donor-badge">💎 DONOR</span>}
             <span className={`badge ${p.tone}`}>{p.rank} ✦</span>
           </div>
           <p>
@@ -1138,7 +1144,12 @@ export function DashboardPage() {
   const [announce, setAnnounce] = useState("");
   const [appealName, setAppealName] = useState("");
   const [linkCode, setLinkCode] = useState("");
+  const [donDiscord, setDonDiscord] = useState("");
+  const [donName, setDonName] = useState("");
+  const [donAmt, setDonAmt] = useState("");
   const [appealReason, setAppealReason] = useState("");
+  const [bdayMonth, setBdayMonth] = useState("");
+  const [bdayDay, setBdayDay] = useState("");
 
   useEffect(() => {
     setDesc(me.faction?.description || "");
@@ -1190,7 +1201,7 @@ export function DashboardPage() {
         </span>
       </PageHeading>
       <div className="tabs">
-        {["Account", "Privacy", "My faction", "Notifications", "Appeals"].map((t) => (
+        {["Account", ...(me.admin ? ["Owners"] : []), "Privacy", "My faction", "Notifications", "Appeals"].map((t) => (
           <Button
             variant="ghost"
             className={tab === t ? "selected" : ""}
@@ -1237,6 +1248,60 @@ export function DashboardPage() {
               </div>
             ))}
           </div>
+          <div className="settings-form">
+            <h2>Avatar &amp; birthday.</h2>
+            <p>
+              Your card shows your current avatar. Upload your own and set
+              your birthday so the server celebrates you. Only day + month are stored.
+            </p>
+            <div className="link-claim-row">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const dataUrl = await new Promise<string>((res, rej) => {
+                    const img = new Image();
+                    const fr = new FileReader();
+                    fr.onload = () => { img.onload = () => {
+                      const c = document.createElement("canvas");
+                      c.width = c.height = 128;
+                      const ctx = c.getContext("2d")!;
+                      ctx.imageSmoothingEnabled = false;
+                      ctx.drawImage(img, 0, 0, 128, 128);
+                      res(c.toDataURL("image/png"));
+                    };
+                    img.onerror = rej;
+                    img.src = String(fr.result);
+                  };
+                  fr.readAsDataURL(f);
+                }).catch(() => "");
+                  if (dataUrl) await run("set_avatar", { avatar: dataUrl });
+                }}
+              />
+            </div>
+            <div className="link-claim-row">
+              <select className="link-code-input" defaultValue="" onChange={(e) => setBdayMonth(e.target.value)} aria-label="Month">
+                <option value="">Month…</option>
+                {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select className="link-code-input" defaultValue="" onChange={(e) => setBdayDay(e.target.value)} aria-label="Day">
+                <option value="">Day…</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <Button
+                disabled={!bdayMonth || !bdayDay}
+                onClick={() => run("birthday", { month: Number(bdayMonth), day: Number(bdayDay) })}
+              >
+                Save birthday
+              </Button>
+            </div>
+          </div>
           {!me.linked && (
             <div className="link-claim">
               <h3>Link your Minecraft account</h3>
@@ -1257,6 +1322,44 @@ export function DashboardPage() {
             </div>
           )}
         </>
+      )}
+
+      {tab === "Owners" && me.admin && (
+        <div className="settings-form">
+          <h2>Owner tools.</h2>
+          <p>
+            Record a donation to give a player the 💎 DONOR badge on the website and their
+            Discord profile card. Badges last 30 days per donation.
+          </p>
+          <div className="link-claim-row">
+            <input
+              className="link-code-input"
+              placeholder="Discord ID"
+              value={donDiscord}
+              onChange={(e) => setDonDiscord(e.target.value.trim())}
+            />
+            <input
+              className="link-code-input"
+              placeholder="or MC name"
+              value={donName}
+              onChange={(e) => setDonName(e.target.value)}
+            />
+            <input
+              className="link-code-input"
+              type="number"
+              placeholder="Amount"
+              value={donAmt}
+              onChange={(e) => setDonAmt(e.target.value)}
+            />
+            <Button
+              onClick={() =>
+                run("record_donation", { discord_id: donDiscord, mc_name: donName, amount: donAmt }, false)
+              }
+            >
+              Record donation
+            </Button>
+          </div>
+        </div>
       )}
 
       {tab === "Privacy" && (
@@ -1550,6 +1653,201 @@ export function StatusPage() {
           ? "Status comes from a live ping to the server. TPS, memory and CPU arrive with the plugin's telemetry feed."
           : "The backend is offline — connect the site to the server database to see live numbers."}
       </p>
+    </>
+  );
+}
+
+// ===========================================================================
+// SERVER PANEL (owners only) — live console, files, power, backups
+// ===========================================================================
+export function ServerPage() {
+  const [status, setStatus] = useState<any>(null);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [command, setCommand] = useState("");
+  const [path, setPath] = useState("");
+  const [fileList, setFileList] = useState<any[] | null>(null);
+  const [file, setFile] = useState<{ path: string; content: string } | null>(null);
+  const [backups, setBackups] = useState<any[]>([]);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const call = async (op: string, extra: Record<string, any> = {}) => {
+    setBusy(true);
+    try {
+      const r = await doAction(op, extra);
+      if (!r.ok) setMsg(r.msg || "Panel request failed.");
+      return r;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refreshStatus = async () => {
+    const r = await call("panel_status");
+    if (r.ok) setStatus(r);
+  };
+  const refreshLog = async () => {
+    const r = await call("panel_log", { lines: 60 });
+    if (r.ok && Array.isArray(r.lines)) setLogLines(r.lines);
+  };
+  const runCommand = async () => {
+    const cmd = command.trim();
+    if (!cmd) return;
+    setCommand("");
+    const r = await call("panel_exec", { command: cmd });
+    if (r.ok) { setMsg(`Sent: ${cmd}`); if (Array.isArray(r.lines)) setLogLines(r.lines); }
+  };
+  const openDir = async (p: string) => {
+    const r = await call("panel_files", { path: p });
+    if (r.ok) { setFileList(r.items || []); setPath(r.path || p); }
+  };
+  const openFile = async (p: string) => {
+    const r = await call("panel_read", { path: p });
+    if (r.ok) setFile({ path: r.path || p, content: r.content ?? "" });
+  };
+  const saveFile = async () => {
+    if (!file) return;
+    const r = await call("panel_write", { path: file.path, content: file.content });
+    setMsg(r.ok ? `Saved ${file.path}` : r.msg || "Save failed.");
+  };
+  const power = async (action: string) => {
+    const r = await call("panel_power", { action });
+    setMsg(r.ok ? `Power: ${action} done.` : r.msg || "Power action failed.");
+    refreshStatus();
+  };
+  const backup = async () => {
+    const r = await call("panel_backup");
+    setMsg(r.ok ? `Backup created: ${r.file} (${r.size_kb} KB)` : r.msg || "Backup failed.");
+    refreshBackups();
+  };
+  const refreshBackups = async () => {
+    const r = await call("panel_backups");
+    if (r.ok) setBackups(r.backups || []);
+  };
+
+  useEffect(() => {
+    if (!me.admin) return;
+    refreshStatus();
+    refreshLog();
+    refreshBackups();
+    const t = setInterval(() => { refreshStatus(); refreshLog(); }, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!me.admin)
+    return (
+      <>
+        <PageHeading title="Server panel" subtitle="Owners only." />
+        <div className="private-state" style={{ maxWidth: 420 }}>
+          <Lock size={28} />
+          <h3>This area is for server owners</h3>
+          <p>Log in with an owner Discord account to reach the console and file manager.</p>
+        </div>
+      </>
+    );
+
+  return (
+    <>
+      <PageHeading title="Server panel." subtitle="Console, files, power and backups — straight from the VPS." />
+      {msg && <div className="subtle-note">{msg}</div>}
+
+      <Stats
+        values={[
+          { label: "Server", value: status?.running ? "Running" : "Stopped", icon: Activity, note: `screen: ${status?.screen ?? "—"}` },
+          { label: "CPU load", value: status ? `${status.cpu_pct}` : "—", icon: Gauge, note: "1-min load average" },
+          { label: "Memory", value: status ? `${status.mem_used_mb} / ${status.mem_total_mb} MB` : "—", icon: MemoryStick, note: "VPS total" },
+          { label: "Uptime", value: status ? `${Math.floor((status.uptime_s || 0) / 3600)}h` : "—", icon: Clock, note: "VPS uptime" },
+        ]}
+      />
+
+      <div className="panel-grid">
+        <section className="panel-card">
+          <h3>Power</h3>
+          <div className="power-row">
+            <Button variant="outline" disabled={busy} onClick={() => power("start")}>Start</Button>
+            <Button variant="outline" disabled={busy} onClick={() => power("restart")}>Restart</Button>
+            <Button variant="outline" disabled={busy} onClick={() => power("stop")}>Stop</Button>
+            <Button disabled={busy} onClick={backup}>Backup world</Button>
+          </div>
+        </section>
+
+        <section className="panel-card">
+          <h3>Console</h3>
+          <div className="console-out">
+            {logLines.length ? logLines.map((l, i) => <div key={i}>{l}</div>) : <div className="muted">No log output yet.</div>}
+          </div>
+          <div className="link-claim-row">
+            <input
+              className="link-code-input"
+              style={{ flex: 1 }}
+              placeholder="say Hello from the panel"
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runCommand()}
+            />
+            <Button disabled={busy} onClick={runCommand}>Run</Button>
+          </div>
+          <p className="muted">Runs as a real console command on the server (no slash needed).</p>
+        </section>
+
+        <section className="panel-card">
+          <h3>Files</h3>
+          <div className="link-claim-row">
+            <input
+              className="link-code-input"
+              style={{ flex: 1 }}
+              placeholder="path (e.g. . or server.properties)"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && openDir(path)}
+            />
+            <Button variant="outline" disabled={busy} onClick={() => openDir(path)}>Browse</Button>
+          </div>
+          {fileList && (
+            <div className="file-list">
+              {fileList.map((f: any) => (
+                <button
+                  key={f.name}
+                  className="file-row"
+                  onClick={() => (f.dir ? openDir(`${path === "." || !path ? "" : path + "/"}${f.name}`) : openFile(`${path === "." || !path ? "" : path + "/"}${f.name}`))}
+                >
+                  {f.dir ? "📁" : "📄"} {f.name} {f.dir ? "" : <span className="muted">{f.size_kb} KB</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {file && (
+            <div className="file-editor">
+              <strong>{file.path}</strong>
+              <textarea
+                value={file.content}
+                onChange={(e) => setFile({ ...file, content: e.target.value })}
+                rows={10}
+                spellCheck={false}
+              />
+              <div className="power-row">
+                <Button disabled={busy} onClick={saveFile}>Save</Button>
+                <Button variant="outline" onClick={() => setFile(null)}>Close</Button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="panel-card">
+          <h3>Backups</h3>
+          {backups.length ? (
+            <div className="file-list">
+              {backups.map((b: any) => (
+                <div key={b.name} className="file-row">🗄️ {b.name} <span className="muted">{b.size_kb} KB</span></div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">No backups yet — make the first one.</p>
+          )}
+          <Button variant="outline" disabled={busy} onClick={refreshBackups}>Refresh</Button>
+        </section>
+      </div>
     </>
   );
 }

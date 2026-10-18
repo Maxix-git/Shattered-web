@@ -17,6 +17,7 @@ import { Route as DonateRouteImport } from './routes/donate'
 import { Route as FactionsRouteImport } from './routes/factions'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
 import { Route as PlayersRouteImport } from './routes/players'
+import { Route as ServerRouteImport } from './routes/server'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as ApiAssistantRouteImport } from './routes/api.assistant'
 import { Route as ApiLiveRouteImport } from './routes/api.live'
@@ -68,6 +69,11 @@ const LeaderboardsRoute = LeaderboardsRouteImport.update({
 const PlayersRoute = PlayersRouteImport.update({
   id: '/players',
   path: '/players',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServerRoute = ServerRouteImport.update({
+  id: '/server',
+  path: '/server',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatusRoute = StatusRouteImport.update({
@@ -140,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/factions': typeof FactionsRouteWithChildren
   '/leaderboards': typeof LeaderboardsRoute
   '/players': typeof PlayersRouteWithChildren
+  '/server': typeof ServerRoute
   '/status': typeof StatusRoute
   '/api/assistant': typeof ApiAssistantRoute
   '/api/live': typeof ApiLiveRoute
@@ -159,6 +166,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/donate': typeof DonateRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/server': typeof ServerRoute
   '/status': typeof StatusRoute
   '/api/assistant': typeof ApiAssistantRoute
   '/api/live': typeof ApiLiveRoute
@@ -182,6 +190,7 @@ export interface FileRoutesById {
   '/factions': typeof FactionsRouteWithChildren
   '/leaderboards': typeof LeaderboardsRoute
   '/players': typeof PlayersRouteWithChildren
+  '/server': typeof ServerRoute
   '/status': typeof StatusRoute
   '/api/assistant': typeof ApiAssistantRoute
   '/api/live': typeof ApiLiveRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/factions'
     | '/leaderboards'
     | '/players'
+    | '/server'
     | '/status'
     | '/api/assistant'
     | '/api/live'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/donate'
     | '/leaderboards'
+    | '/server'
     | '/status'
     | '/api/assistant'
     | '/api/live'
@@ -247,6 +258,7 @@ export interface FileRouteTypes {
     | '/factions'
     | '/leaderboards'
     | '/players'
+    | '/server'
     | '/status'
     | '/api/assistant'
     | '/api/live'
@@ -270,6 +282,7 @@ export interface RootRouteChildren {
   FactionsRoute: typeof FactionsRouteWithChildren
   LeaderboardsRoute: typeof LeaderboardsRoute
   PlayersRoute: typeof PlayersRouteWithChildren
+  ServerRoute: typeof ServerRoute
   StatusRoute: typeof StatusRoute
   ApiAssistantRoute: typeof ApiAssistantRoute
   ApiLiveRoute: typeof ApiLiveRoute
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/players'
       fullPath: '/players'
       preLoaderRoute: typeof PlayersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/server': {
+      id: '/server'
+      path: '/server'
+      fullPath: '/server'
+      preLoaderRoute: typeof ServerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/status': {
@@ -473,6 +493,7 @@ const rootRouteChildren: RootRouteChildren = {
   FactionsRoute: FactionsRouteWithChildren,
   LeaderboardsRoute: LeaderboardsRoute,
   PlayersRoute: PlayersRouteWithChildren,
+  ServerRoute: ServerRoute,
   StatusRoute: StatusRoute,
   ApiAssistantRoute: ApiAssistantRoute,
   ApiLiveRoute: ApiLiveRoute,

@@ -16,6 +16,10 @@ export type Player = {
   honor: number;
   bountyClaims: number;
   openBounties: number;
+  owner?: boolean;
+  donor?: boolean;
+  linked?: boolean;
+  avatar?: string | null;
 };
 
 export type Faction = {
@@ -125,6 +129,10 @@ function hydrateLive(d: any) {
     honor: p.honor || 0,
     bountyClaims: p.bountyClaims || 0,
     openBounties: p.openBounties || 0,
+    owner: !!p.owner,
+    donor: !!p.donor,
+    linked: !!p.linked,
+    avatar: p.avatar || null,
   })) as [Player, ...Player[]];
   if (mappedPlayers.length) {
     players.length = 0;
