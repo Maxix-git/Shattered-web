@@ -1,3 +1,5 @@
+import "./lib/load-env"; // must be first — loads .env before any route reads env
+
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
