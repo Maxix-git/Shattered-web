@@ -4,7 +4,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 async function proxyConfig() {
-  const api = (process.env["SITE_API_URL"] || "").replace(/\/$/, "");
+  const api = (process.env["SITE_API_URL"] || "http://127.0.0.1:4000").replace(/\/$/, "");
   if (!api) return Response.json({ ok: false, mode: "unconfigured" }, { status: 200 });
   try {
     const r = await fetch(`${api}/v1/assistant/config`, { signal: AbortSignal.timeout(30_000) });
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/api/assistant")({
         try { body = await request.json(); } catch {}
         const message = typeof body['message'] === "string" ? body['message'].trim().slice(0, 500) : "";
         if (!message) return Response.json({ ok: false, error: "message required" }, { status: 400 });
-        const api = (process.env["SITE_API_URL"] || "").replace(/\/$/, "");
+        const api = (process.env["SITE_API_URL"] || "http://127.0.0.1:4000").replace(/\/$/, "");
         if (!api) return Response.json({ ok: false, error: "assistant not configured" }, { status: 503 });
         try {
           const r = await fetch(`${api}/v1/assistant/chat`, {

@@ -8,13 +8,15 @@ import { getSession, csrfOk, csrfToken, isAdmin, type Sess } from "./auth";
 import net from "node:net";
 
 // ---------- Bot data API client ----------
-const API = (process.env["SITE_API_URL"] || "http://127.0.0.1:3939").replace(/\/$/, "");
-const KEY = process.env["SITE_API_KEY"] || "";
+// Read env at CALL time, not module load time, so dotenv always wins
+// regardless of module evaluation order in dev/build.
+const API = () => (process.env["SITE_API_URL"] || "http://127.0.0.1:4000").replace(/\/$/, "");
+const KEY = () => process.env["SITE_API_KEY"] || "";
 
 async function rpc(op: string, user: Record<string, any> | null, args?: Record<string, any>): Promise<any> {
-  const res = await fetch(`${API}/api/site/rpc`, {
+  const res = await fetch(`${API()}/api/site/rpc`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${KEY}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${KEY()}` },
     body: JSON.stringify({ op, user, args: args || {} }),
     signal: AbortSignal.timeout(8000),
   });

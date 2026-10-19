@@ -1,4 +1,4 @@
-import "./lib/load-env"; // must be first — loads .env before any route reads env
+import "dotenv/config"; // classic dotenv — loads .env first, real env always wins
 
 import "./lib/error-capture";
 
