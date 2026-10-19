@@ -190,7 +190,7 @@ export async function fetchMe(): Promise<boolean> {
   }
 }
 
-export async function doAction(op: string, extra: Record<string, any> = {}): Promise<{ ok: boolean; msg: string }> {
+export async function doAction(op: string, extra: Record<string, any> = {}): Promise<{ ok: boolean; msg: string; data?: any }> {
   try {
     const r = await fetch("/api/me", {
       method: "POST",

@@ -42,9 +42,11 @@ import {
   Megaphone,
   Ban,
   Bell,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar } from "./community-shell";
+import { Avatar, DiscordMark } from "./community-shell";
 import {
   bounties,
   factions,
@@ -939,8 +941,8 @@ export function BountiesPage() {
               <LogIn size={24} />
               <h3>Sign in to post bounties</h3>
               <p>You need a linked Discord + Minecraft account to mark a target.</p>
-              <Button asChild>
-                <a href="/auth/discord">Sign in with Discord</a>
+              <Button asChild className="btn-discord">
+                <a href="/auth/discord"><DiscordMark size={16} /> Sign in with Discord</a>
               </Button>
             </div>
           )}
@@ -1042,8 +1044,8 @@ export function CommunityPage() {
           <LogIn size={24} />
           <h3>Sign in to post</h3>
           <p>Discord accounts only. 30 seconds between posts, mods remove garbage.</p>
-          <Button asChild>
-            <a href="/auth/discord">Sign in with Discord</a>
+          <Button asChild className="btn-discord">
+            <a href="/auth/discord"><DiscordMark size={16} /> Sign in with Discord</a>
           </Button>
         </div>
       )}
@@ -1102,8 +1104,8 @@ function ReportModal({ close }: { close: () => void }) {
             <LogIn size={24} />
             <h3>Sign in first</h3>
             <p>Appeals need a Discord account so staff can reach you.</p>
-            <Button asChild>
-              <a href="/auth/discord">Sign in with Discord</a>
+            <Button asChild className="btn-discord">
+              <a href="/auth/discord"><DiscordMark size={16} /> Sign in with Discord</a>
             </Button>
           </div>
         )}
@@ -1134,8 +1136,16 @@ export function PostPage({ id }: { id: string }) {
 }
 
 // ---------------------------------------------------------------- dashboard
+type OwnerDashData = {
+  stats: { players: number; linked: number; openBounties: number; openAppeals: number; donations30d: number };
+  donations: { id: number; who: string; amount: number; time: string }[];
+  appeals: { id: number; mcName: string; discordId: string; punishment: string; reason: string; status: string; resolution: string; time: string }[];
+  bounties: { id: string; target: string; poster: string; reward: number; time: string }[];
+  announcements: { id: number; author: string; body: string; posted: boolean; time: string }[];
+};
+
 export function DashboardPage() {
-  const [tab, setTab] = useState("Account");
+  const [tab, setTab] = useState("Overview");
   const [msg, setMsg] = useState("");
   const [publicProfile, setPublicProfile] = useState(true);
   const [publicInv, setPublicInv] = useState(false);
@@ -1150,6 +1160,11 @@ export function DashboardPage() {
   const [appealReason, setAppealReason] = useState("");
   const [bdayMonth, setBdayMonth] = useState("");
   const [bdayDay, setBdayDay] = useState("");
+  const [bountyTarget, setBountyTarget] = useState("");
+  const [wallDraft, setWallDraft] = useState("");
+  const [annDraft, setAnnDraft] = useState("");
+  const [ownerDash, setOwnerDash] = useState<OwnerDashData | null>(null);
+  const [myBts, setMyBts] = useState<{ id: string; target: string; reward: number; time: string }[]>([]);
 
   useEffect(() => {
     setDesc(me.faction?.description || "");
@@ -1162,6 +1177,25 @@ export function DashboardPage() {
     if (r.ok && reload) setTimeout(() => window.location.reload(), 700);
     return r;
   };
+
+  const loadMyBts = async () => {
+    const r = await doAction("my_bounties");
+    if (r.ok && r.data?.bounties) setMyBts(r.data.bounties);
+  };
+  const loadOwner = async () => {
+    const r = await doAction("owner_dash");
+    if (r.ok && r.data) { setOwnerDash(r.data); return; }
+    setMsg(r.msg || "Could not load owner console data.");
+  };
+
+  useEffect(() => {
+    if (me.logged) loadMyBts().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (tab === "Owner console" && me.admin && !ownerDash) loadOwner().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   if (!me.logged)
     return (
@@ -1177,38 +1211,65 @@ export function DashboardPage() {
             Your Discord session maps to your Minecraft account through the bot's link system, so
             everything here stays in sync.
           </p>
-          <Button asChild>
-            <a href="/auth/discord">Sign in with Discord</a>
+          <Button asChild className="btn-discord">
+            <a href="/auth/discord"><DiscordMark size={16} /> Sign in with Discord</a>
           </Button>
         </div>
       </>
     );
 
   const donorDaysLeft = Math.max(0, Math.ceil(me.donorUntil - Date.now() / 1000) / 86400);
+  const myPlayer = me.mcName ? profilePlayer(me.mcName) : undefined;
+  const kd = me.stats && me.stats.deaths > 0 ? (me.stats.kills / me.stats.deaths).toFixed(2) : me.stats ? String(me.stats.kills) : "—";
+
+  const roleBadge = me.admin ? (
+    <span className="badge gold"><Crown size={12} /> OWNER</span>
+  ) : isDonor() ? (
+    <span className="badge gold"><Gem size={12} /> DONOR · {Math.ceil(donorDaysLeft)}d</span>
+  ) : (
+    <span className="badge jade">MEMBER</span>
+  );
+
+  const tabs = ["Overview", "Account", "Privacy", ...(me.faction ? ["Faction"] : []), "Bounties", "Notifications", "Appeals", ...(me.admin ? ["Owner console"] : [])];
 
   return (
     <>
-      <PageHeading
-        title={`Welcome back, ${me.mcName || me.username}.`}
-        subtitle={
-          me.linked
-            ? "Accounts synced. Everything below is live."
-            : "Link Minecraft with /link in-game to unlock stats, bounties and faction tools."
-        }
-      >
-        <span className={`badge ${isDonor() ? "gold" : "jade"}`}>
-          {isDonor() ? `Donor · ad-free ${Math.ceil(donorDaysLeft)}d` : "Member"}
-        </span>
-      </PageHeading>
-      <div className="tabs">
-        {["Account", ...(me.admin ? ["Owners"] : []), "Privacy", "My faction", "Notifications", "Appeals"].map((t) => (
+      <div className="dash-hero">
+        <div className="dash-hero-avatar">
+          {myPlayer ? <Avatar player={myPlayer} large /> : me.avatar ? (
+            <span className="pixel-avatar large has-img"><img src={me.avatar} alt="" /></span>
+          ) : (
+            <span className="pixel-avatar iron large"><span className="pixel-eyes" /><span className="pixel-mouth" /></span>
+          )}
+        </div>
+        <div className="dash-hero-main">
+          <h1>{me.mcName || me.username}</h1>
+          <div className="dash-hero-badges">
+            {roleBadge}
+            {me.faction && <span className="badge violet">{me.faction.tag} · {me.faction.name}</span>}
+            {me.linked
+              ? <span className="badge jade"><Check size={12} /> MC LINKED</span>
+              : <span className="badge iron">NOT LINKED</span>}
+          </div>
+          <p>
+            {me.linked
+              ? "Accounts synced — everything below is live from the server."
+              : "Run /link in-game to unlock stats, bounties and faction tools."}
+          </p>
+        </div>
+        <div className={`dash-hero-status ${serverStatus.online ? "up" : ""}`}>
+          <Radio size={16} />
+          <strong>{serverStatus.online ? "Server online" : serverStatus.configured ? "Server offline" : "Server not configured"}</strong>
+          <small>{serverStatus.online ? `${serverStatus.playersOnline}/${serverStatus.playersMax} playing` : "Status updates once the plugin is live"}</small>
+        </div>
+      </div>
+
+      <div className="tabs dash-tabs">
+        {tabs.map((t) => (
           <Button
             variant="ghost"
             className={tab === t ? "selected" : ""}
-            onClick={() => {
-              setTab(t);
-              setMsg("");
-            }}
+            onClick={() => { setTab(t); setMsg(""); }}
             key={t}
           >
             {t}
@@ -1217,20 +1278,73 @@ export function DashboardPage() {
       </div>
       {msg && <div className="subtle-note">{msg}</div>}
 
-      {tab === "Account" && (
+      {tab === "Overview" && (
         <>
           <Stats
             values={
               me.stats
                 ? [
-                    { label: "Kills", value: String(me.stats.kills), icon: Swords, note: `Streak: ${me.stats.streak}` },
-                    { label: "Deaths", value: String(me.stats.deaths), icon: Skull, note: `Best streak: ${me.stats.bestStreak}` },
+                    { label: "Kills", value: String(me.stats.kills), icon: Swords, note: `Streak: ${me.stats.streak} · best ${me.stats.bestStreak}` },
+                    { label: "Deaths", value: String(me.stats.deaths), icon: Skull, note: `K/D ratio: ${kd}` },
                     { label: "Honor", value: me.stats.honor.toLocaleString(), icon: Star, note: "Earned, never bought", tone: "text-gold" },
                     { label: "Playtime", value: `${me.stats.hours}h`, icon: Clock, note: `${me.stats.chunks} chunks explored` },
                   ]
                 : [{ label: "No stats yet", value: "—", icon: Package, note: "Link your Minecraft account to appear" }]
             }
           />
+          <div className="dash-two-col">
+            <div className="settings-form">
+              <h2>Mark a bounty.</h2>
+              <p>Rewards are auto-priced from the target's stats — dangerous players cost more. −100 Honor from you when it's claimed.</p>
+              <div className="link-claim-row">
+                <input
+                  className="link-code-input"
+                  placeholder="Target player name"
+                  value={bountyTarget}
+                  maxLength={16}
+                  onChange={(e) => setBountyTarget(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && bountyTarget.trim()) { run("bounty", { target: bountyTarget.trim() }); setBountyTarget(""); } }}
+                />
+                <Button disabled={!bountyTarget.trim()} onClick={() => { run("bounty", { target: bountyTarget.trim() }); setBountyTarget(""); }}>
+                  <Crosshair size={16} /> Post bounty
+                </Button>
+              </div>
+              <h2>Post to the wall.</h2>
+              <textarea rows={2} maxLength={1000} placeholder="Say something to the realm…" value={wallDraft} onChange={(e) => setWallDraft(e.target.value)} />
+              <Button disabled={!wallDraft.trim()} onClick={() => { run("post", { body: wallDraft.trim() }); setWallDraft(""); }}>
+                <MessageSquare size={16} /> Post
+              </Button>
+            </div>
+            <div className="settings-form">
+              <h2>Recent activity.</h2>
+              {feed.length ? feed.slice(0, 7).map((f, i) => (
+                <div className="dash-feed-row" key={i}>
+                  <Swords size={14} />
+                  <span>{f[0] === "—" ? "The void" : f[0]} <em>took down</em> {f[1]}</span>
+                  <small>{f[3]}</small>
+                </div>
+              )) : (
+                <div className="empty-state"><Activity size={28} /><h3>No blood yet</h3><p>Kills appear here as they happen in-game.</p></div>
+              )}
+              {myBts.length > 0 && (
+                <>
+                  <h2>Your marks ({myBts.length}).</h2>
+                  {myBts.slice(0, 4).map((b) => (
+                    <div className="dash-feed-row" key={b.id}>
+                      <Crosshair size={14} />
+                      <span>{b.target} · <em>{b.reward} Honor</em></span>
+                      <button className="link-cancel" onClick={() => { run("bounty_cancel", { id: Number(b.id) }); setTimeout(loadMyBts, 600); }}>cancel</button>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === "Account" && (
+        <>
           <div className="settings-form">
             {[
               ["Discord account", me.username ?? "—", "Signed in"],
@@ -1241,19 +1355,14 @@ export function DashboardPage() {
                 <Lock size={20} />
                 <div>
                   <strong>{t}</strong>
-                  <p>
-                    {d} · <span className="muted">{s}</span>
-                  </p>
+                  <p>{d} · <span className="muted">{s}</span></p>
                 </div>
               </div>
             ))}
           </div>
           <div className="settings-form">
             <h2>Avatar &amp; birthday.</h2>
-            <p>
-              Your card shows your current avatar. Upload your own and set
-              your birthday so the server celebrates you. Only day + month are stored.
-            </p>
+            <p>Your card shows your current avatar. Upload your own and set your birthday so the server celebrates you. Only day + month are stored.</p>
             <div className="link-claim-row">
               <input
                 type="file"
@@ -1305,10 +1414,7 @@ export function DashboardPage() {
           {!me.linked && (
             <div className="link-claim">
               <h3>Link your Minecraft account</h3>
-              <p>
-                Run <code>/link</code> in-game or on Discord to get a 6-character code, then enter it
-                here to sync your stats, bounties and faction tools.
-              </p>
+              <p>Run <code>/link</code> in-game or on Discord to get a 6-character code, then enter it here to sync your stats, bounties and faction tools.</p>
               <div className="link-claim-row">
                 <input
                   className="link-code-input"
@@ -1324,66 +1430,18 @@ export function DashboardPage() {
         </>
       )}
 
-      {tab === "Owners" && me.admin && (
-        <div className="settings-form">
-          <h2>Owner tools.</h2>
-          <p>
-            Record a donation to give a player the 💎 DONOR badge on the website and their
-            Discord profile card. Badges last 30 days per donation.
-          </p>
-          <div className="link-claim-row">
-            <input
-              className="link-code-input"
-              placeholder="Discord ID"
-              value={donDiscord}
-              onChange={(e) => setDonDiscord(e.target.value.trim())}
-            />
-            <input
-              className="link-code-input"
-              placeholder="or MC name"
-              value={donName}
-              onChange={(e) => setDonName(e.target.value)}
-            />
-            <input
-              className="link-code-input"
-              type="number"
-              placeholder="Amount"
-              value={donAmt}
-              onChange={(e) => setDonAmt(e.target.value)}
-            />
-            <Button
-              onClick={() =>
-                run("record_donation", { discord_id: donDiscord, mc_name: donName, amount: donAmt }, false)
-              }
-            >
-              Record donation
-            </Button>
-          </div>
-        </div>
-      )}
-
       {tab === "Privacy" && (
         <div className="settings-form">
           <h2>Your information, your choice.</h2>
           <label className="check-row">
-            <input
-              type="checkbox"
-              checked={publicProfile}
-              onChange={(e) => setPublicProfile(e.target.checked)}
-            />
+            <input type="checkbox" checked={publicProfile} onChange={(e) => setPublicProfile(e.target.checked)} />
             Public profile
           </label>
           <label className="check-row">
-            <input
-              type="checkbox"
-              checked={publicInv}
-              onChange={(e) => setPublicInv(e.target.checked)}
-            />
+            <input type="checkbox" checked={publicInv} onChange={(e) => setPublicInv(e.target.checked)} />
             Public inventory
           </label>
-          <p className="subtle-note">
-            Live coordinates are never exposed publicly, regardless of these settings.
-          </p>
+          <p className="subtle-note">Live coordinates are never exposed publicly, regardless of these settings.</p>
           <Button onClick={() => run("privacy", { profile_public: publicProfile, inventory_public: publicInv })}>
             Save privacy settings
           </Button>
@@ -1391,15 +1449,14 @@ export function DashboardPage() {
         </div>
       )}
 
-      {tab === "My faction" &&
+      {tab === "Faction" &&
         (me.faction ? (
           <div className="settings-layout">
             <form className="settings-form">
               <h2>{me.faction.name} {me.faction.isOwner && "· owner controls"}</h2>
               {!me.faction.isOwner ? (
                 <p className="subtle-note">
-                  You're a {me.faction.role || "member"} of {me.faction.name}. Only the owner can edit the
-                  faction from the web.
+                  You're a {me.faction.role || "member"} of {me.faction.name}. Only the owner can edit the faction from the web.
                 </p>
               ) : (
                 <>
@@ -1453,6 +1510,38 @@ export function DashboardPage() {
           </div>
         ))}
 
+      {tab === "Bounties" && (
+        <div className="settings-form">
+          <h2>Post a mark.</h2>
+          <p>Rewards are auto-priced from the target's stats. You lose 100 Honor if someone claims it — post wisely.</p>
+          <div className="link-claim-row">
+            <input
+              className="link-code-input"
+              placeholder="Target player name"
+              value={bountyTarget}
+              maxLength={16}
+              onChange={(e) => setBountyTarget(e.target.value)}
+            />
+            <Button
+              disabled={!bountyTarget.trim()}
+              onClick={() => { run("bounty", { target: bountyTarget.trim() }); setBountyTarget(""); setTimeout(loadMyBts, 600); }}
+            >
+              <Crosshair size={16} /> Post bounty
+            </Button>
+          </div>
+          <h2>Your open marks ({myBts.length}).</h2>
+          {myBts.length ? myBts.map((b) => (
+            <div className="dash-feed-row" key={b.id}>
+              <Crosshair size={14} />
+              <span><strong>{b.target}</strong> · {b.reward} Honor · posted {b.time}</span>
+              <button className="link-cancel" onClick={() => { run("bounty_cancel", { id: Number(b.id) }); setTimeout(loadMyBts, 600); }}>cancel</button>
+            </div>
+          )) : (
+            <div className="empty-state"><Crosshair size={28} /><h3>No marks yet</h3><p>Your open bounties show here with a cancel button.</p></div>
+          )}
+        </div>
+      )}
+
       {tab === "Notifications" && (
         <div className="settings-form">
           <h2>What happened while you were away.</h2>
@@ -1463,7 +1552,7 @@ export function DashboardPage() {
                   {n.kind === "bounty" ? <Crosshair size={18} /> : <Swords size={18} />}
                 </span>
                 <div>
-                  <strong>{n.kind === "bounty" ? "Bounty news" : "Revenge"}</strong>
+                  <strong>{n.kind === "bounty" ? "Bounty news" : n.kind === "appeal" ? "Appeal result" : n.kind === "faction" ? "Faction" : "Revenge"}</strong>
                   <p>{n.body}</p>
                   <small>{n.time}</small>
                 </div>
@@ -1473,7 +1562,7 @@ export function DashboardPage() {
             <div className="empty-state">
               <Bell size={32} />
               <h3>Nothing yet</h3>
-              <p>Bounty claims and revenge notifications land here.</p>
+              <p>Bounty claims, appeal results and faction news land here.</p>
             </div>
           )}
           {me.notifications.length > 0 && <Button onClick={() => run("notifs_read", {}, true)}>Mark all read</Button>}
@@ -1501,6 +1590,104 @@ export function DashboardPage() {
           </label>
           <Button type="submit">Submit to staff</Button>
         </form>
+      )}
+
+      {tab === "Owner console" && me.admin && (
+        !ownerDash ? (
+          <div className="settings-form">
+            <h2>Owner console.</h2>
+            <p className="subtle-note">Loading… <button className="link-cancel" onClick={() => loadOwner()}>retry</button></p>
+          </div>
+        ) : (
+        <>
+          <div className="owner-chips">
+            <div className="owner-chip"><Users size={16} /><strong>{ownerDash.stats.players}</strong><small>players</small></div>
+            <div className="owner-chip"><Check size={16} /><strong>{ownerDash.stats.linked}</strong><small>linked</small></div>
+            <div className="owner-chip"><Crosshair size={16} /><strong>{ownerDash.stats.openBounties}</strong><small>open marks</small></div>
+            <div className="owner-chip"><Ban size={16} /><strong>{ownerDash.stats.openAppeals}</strong><small>appeals</small></div>
+            <div className="owner-chip"><Coins size={16} /><strong>{ownerDash.stats.donations30d.toLocaleString()}</strong><small>donated (30d)</small></div>
+          </div>
+
+          <div className="dash-two-col">
+            <div className="settings-form">
+              <h2><Megaphone size={16} /> Server announcement.</h2>
+              <p>Posts to #announcements through the bot within seconds. Signed with your name.</p>
+              <textarea rows={3} maxLength={500} placeholder="What does the realm need to know?" value={annDraft} onChange={(e) => setAnnDraft(e.target.value)} />
+              <Button disabled={!annDraft.trim()} onClick={() => { run("site_announce", { body: annDraft.trim() }); setAnnDraft(""); setTimeout(loadOwner, 900); }}>
+                <Megaphone size={16} /> Queue announcement
+              </Button>
+              <h2>Recent</h2>
+              {ownerDash.announcements.length ? ownerDash.announcements.map((a) => (
+                <div className="dash-feed-row" key={a.id}>
+                  <Megaphone size={14} />
+                  <span>{a.body.slice(0, 70)}<em> · {a.author}</em></span>
+                  <small>{a.posted ? "posted" : "queued"} · {a.time}</small>
+                </div>
+              )) : <p className="subtle-note">No announcements yet.</p>}
+            </div>
+
+            <div className="settings-form">
+              <h2><Coins size={16} /> Donations.</h2>
+              <p>Record a donation to give the 💎 DONOR badge for 30 days.</p>
+              <div className="link-claim-row">
+                <input className="link-code-input" placeholder="Discord ID" value={donDiscord} onChange={(e) => setDonDiscord(e.target.value.trim())} />
+                <input className="link-code-input" placeholder="or MC name" value={donName} onChange={(e) => setDonName(e.target.value)} />
+              </div>
+              <div className="link-claim-row">
+                <input className="link-code-input" type="number" placeholder="Amount" value={donAmt} onChange={(e) => setDonAmt(e.target.value)} />
+                <Button onClick={() => { run("record_donation", { discord_id: donDiscord, mc_name: donName, amount: donAmt }); setDonDiscord(""); setDonName(""); setDonAmt(""); setTimeout(loadOwner, 900); }}>
+                  Record
+                </Button>
+              </div>
+              <h2>Recent</h2>
+              {ownerDash.donations.length ? ownerDash.donations.map((d) => (
+                <div className="dash-feed-row" key={d.id}>
+                  <Coins size={14} />
+                  <span><strong>{d.who}</strong> · {d.amount.toLocaleString()}</span>
+                  <small>{d.time}</small>
+                </div>
+              )) : <p className="subtle-note">No donations recorded yet.</p>}
+            </div>
+          </div>
+
+          <div className="settings-form">
+            <h2><Ban size={16} /> Appeals ({ownerDash.stats.openAppeals} open).</h2>
+            {ownerDash.appeals.length ? ownerDash.appeals.map((ap) => (
+              <div className={`owner-appeal ${ap.status === "open" ? "" : "resolved"}`} key={ap.id}>
+                <div className="owner-appeal-head">
+                  <strong>{ap.mcName}</strong>
+                  <span className={`badge ${ap.status === "open" ? "rose" : ap.resolution === "accepted" ? "jade" : "iron"}`}>
+                    {ap.status === "open" ? ap.punishment.toUpperCase() : ap.resolution.toUpperCase()}
+                  </span>
+                  <small>{ap.time}</small>
+                </div>
+                <p>{ap.reason}</p>
+                {ap.status === "open" && (
+                  <div className="owner-appeal-actions">
+                    <Button variant="outline" onClick={() => { run("resolve_appeal", { id: ap.id, resolution: "accepted" }); setTimeout(loadOwner, 900); }}>
+                      <CheckCircle2 size={15} /> Accept
+                    </Button>
+                    <Button variant="outline" className="btn-rose" onClick={() => { run("resolve_appeal", { id: ap.id, resolution: "denied" }); setTimeout(loadOwner, 900); }}>
+                      <XCircle size={15} /> Deny
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )) : <p className="subtle-note">No appeals submitted yet.</p>}
+          </div>
+
+          <div className="settings-form">
+            <h2><Crosshair size={16} /> Open bounty board ({ownerDash.stats.openBounties}).</h2>
+            {ownerDash.bounties.length ? ownerDash.bounties.map((b) => (
+              <div className="dash-feed-row" key={b.id}>
+                <Crosshair size={14} />
+                <span><strong>{b.target}</strong> · {b.reward} Honor · by {b.poster}</span>
+                <small>{b.time}</small>
+              </div>
+            )) : <p className="subtle-note">The board is clean.</p>}
+          </div>
+        </>
+        )
       )}
     </>
   );
