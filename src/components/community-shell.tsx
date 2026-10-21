@@ -269,7 +269,12 @@ export function CommunityShell({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
         </header>
-        <main key={liveTick}>{children}</main>
+        {/* Most pages remount on each data refresh. The dashboard and server
+            panel hold tabs, drafts and file edits, so they keep a stable key
+            and re-render in place via subscribeLive instead. */}
+        <main key={path.startsWith("/dashboard") || path.startsWith("/server") ? "stateful" : liveTick}>
+          {children}
+        </main>
         <footer>
           <span>© 2026 Shattered SMP</span>
           <span>

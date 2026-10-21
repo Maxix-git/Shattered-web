@@ -7,7 +7,7 @@ async function proxyConfig() {
   const api = (process.env["SITE_API_URL"] || "http://127.0.0.1:4000").replace(/\/$/, "");
   if (!api) return Response.json({ ok: false, mode: "unconfigured" }, { status: 200 });
   try {
-    const r = await fetch(`${api}/v1/assistant/config`, { signal: AbortSignal.timeout(30_000) });
+    const r = await fetch(`${api}/v1/assistant/config`, { signal: AbortSignal.timeout(45_000) });
     const j = await r.json().catch(() => ({}));
     return Response.json({ ok: true, mode: j.mode || "stub", name: j.name || "Shard" });
   } catch {
@@ -32,10 +32,18 @@ export const Route = createFileRoute("/api/assistant")({
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ message }),
-            signal: AbortSignal.timeout(25_000),
+            signal: AbortSignal.timeout(40_000),
           });
-          const j = await r.json().catch(() => ({ reply: "I could not reach the server data. Try again in a moment." }));
-          return Response.json({ ok: true, reply: j.reply || "…", name: j.name || "Shard" });
+          if (!r.ok) return Response.json({ ok: false, error: `assistant api ${r.status}` }, { status: 502 });
+          const j = await r.json().catch(() => ({} as Record<string, any>));
+          // Forward the REAL mode so the bubble can show when the AI is offline.
+          return Response.json({
+            ok: true,
+            reply: j.reply || "…",
+            name: j.name || "Shard",
+            mode: j.mode || "stub",
+            degraded: !!j.degraded,
+          });
         } catch {
           return Response.json({ ok: false, error: "backend unreachable" }, { status: 502 });
         }

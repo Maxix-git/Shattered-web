@@ -77,6 +77,7 @@ export const zones: Zone[] = [];
 
 export const serverStatus = {
   configured: false, online: false, host: "", playersOnline: 0, playersMax: 0, version: "", ms: 0,
+  tps: null as number | null, motd: "", source: "none" as string, heartbeatAge: null as number | null,
 };
 
 export const siteMeta = { players: 0, kills: 0, factions: 0, worldAgeDays: 0, online: 0 };
@@ -111,6 +112,25 @@ export function isDonor() {
 let live = false;
 export function isLive() {
   return live;
+}
+
+// Tiny pub/sub so stateful pages (dashboard, server panel) re-render IN PLACE
+// when live data / session data refresh, instead of being remounted (which
+// wiped their tab, drafts and unsaved file edits every 30 seconds).
+let dataVersion = 0;
+const listeners = new Set<() => void>();
+function notify() {
+  dataVersion++;
+  listeners.forEach((l) => l());
+}
+export function subscribeLive(l: () => void) {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+}
+export function liveVersion() {
+  return dataVersion;
 }
 
 function hydrateLive(d: any) {
@@ -157,13 +177,24 @@ function hydrateLive(d: any) {
   bounties.push(...(d.bounties || []));
   zones.length = 0;
   zones.push(...(d.zones || []));
-  Object.assign(serverStatus, d.status || {});
+  hydrateStatus(d);
   Object.assign(siteMeta, d.meta || {});
+  siteMeta.online = Number(d.status?.playersOnline) || 0;
   live = true;
+}
+
+// Server status must update even when the player list is empty or the API is
+// asleep, so it is applied separately from the rest of the live payload.
+function hydrateStatus(d: any) {
+  if (d && d.status && typeof d.status === "object") {
+    const { onlineNames: _names, ...st } = d.status;
+    Object.assign(serverStatus, st);
+  }
 }
 
 export function hydrateMe(d: Me) {
   Object.assign(me, d);
+  notify();
 }
 
 export async function fetchLive(): Promise<boolean> {
@@ -171,8 +202,17 @@ export async function fetchLive(): Promise<boolean> {
     const r = await fetch("/api/live", { headers: { accept: "application/json" } });
     if (!r.ok) return false;
     const d = await r.json();
-    if (!d || !Array.isArray(d.players) || d.players.length === 0) return false;
+    if (!d || !Array.isArray(d.players)) return false;
+    // Always apply server status (the Minecraft ping/heartbeat), even if the
+    // API is down or there are no players yet.
+    hydrateStatus(d);
+    if (d.apiDown) {
+      siteMeta.online = Number(d.status?.playersOnline) || 0;
+      notify();
+      return false;
+    }
     hydrateLive(d);
+    notify();
     return true;
   } catch {
     return false;
@@ -190,7 +230,7 @@ export async function fetchMe(): Promise<boolean> {
   }
 }
 
-export async function doAction(op: string, extra: Record<string, any> = {}): Promise<{ ok: boolean; msg: string; data?: any }> {
+export async function doAction(op: string, extra: Record<string, any> = {}): Promise<{ ok: boolean; msg: string; data?: any; [k: string]: any }> {
   try {
     const r = await fetch("/api/me", {
       method: "POST",
@@ -198,7 +238,9 @@ export async function doAction(op: string, extra: Record<string, any> = {}): Pro
       body: JSON.stringify({ op, _csrf: me.csrf, ...extra }),
     });
     const j = await r.json().catch(() => ({ ok: false, msg: "Network error." }));
-    if (j.ok) await fetchMe();
+    // panel_* ops are polled every few seconds and never change the session
+    // payload, so skip the extra /api/me round trip for them.
+    if (j.ok && !op.startsWith("panel_")) await fetchMe();
     return j;
   } catch {
     return { ok: false, msg: "Network error." };

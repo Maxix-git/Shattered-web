@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -44,6 +44,16 @@ import {
   Bell,
   CheckCircle2,
   XCircle,
+  Play,
+  RotateCw,
+  Square,
+  Archive,
+  Terminal,
+  Folder,
+  FileText,
+  RefreshCw,
+  Send,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, DiscordMark } from "./community-shell";
@@ -54,6 +64,8 @@ import {
   doAction,
   isLive,
   isDonor,
+  liveVersion,
+  subscribeLive,
   me,
   news,
   players,
@@ -1144,7 +1156,20 @@ type OwnerDashData = {
   announcements: { id: number; author: string; body: string; posted: boolean; time: string }[];
 };
 
+const DASH_TAB_ICONS: Record<string, typeof Users> = {
+  Overview: Activity,
+  Account: Lock,
+  Privacy: EyeOff,
+  Faction: Shield,
+  Bounties: Crosshair,
+  Notifications: Bell,
+  Appeals: Ban,
+  "Owner console": Crown,
+};
+
 export function DashboardPage() {
+  // re-render in place when live/session data refreshes (no remount)
+  useSyncExternalStore(subscribeLive, liveVersion, () => 0);
   const [tab, setTab] = useState("Overview");
   const [msg, setMsg] = useState("");
   const [publicProfile, setPublicProfile] = useState(true);
@@ -1191,7 +1216,7 @@ export function DashboardPage() {
   useEffect(() => {
     if (me.logged) loadMyBts().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [me.logged]);
   useEffect(() => {
     if (tab === "Owner console" && me.admin && !ownerDash) loadOwner().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1218,7 +1243,7 @@ export function DashboardPage() {
       </>
     );
 
-  const donorDaysLeft = Math.max(0, Math.ceil(me.donorUntil - Date.now() / 1000) / 86400);
+  const donorDaysLeft = Math.max(0, (me.donorUntil - Date.now() / 1000) / 86400);
   const myPlayer = me.mcName ? profilePlayer(me.mcName) : undefined;
   const kd = me.stats && me.stats.deaths > 0 ? (me.stats.kills / me.stats.deaths).toFixed(2) : me.stats ? String(me.stats.kills) : "—";
 
@@ -1257,26 +1282,39 @@ export function DashboardPage() {
               : "Run /link in-game to unlock stats, bounties and faction tools."}
           </p>
         </div>
-        <div className={`dash-hero-status ${serverStatus.online ? "up" : ""}`}>
+        <Link to="/status" className={`dash-hero-status ${serverStatus.online ? "up" : ""}`}>
           <Radio size={16} />
           <strong>{serverStatus.online ? "Server online" : serverStatus.configured ? "Server offline" : "Server not configured"}</strong>
-          <small>{serverStatus.online ? `${serverStatus.playersOnline}/${serverStatus.playersMax} playing` : "Status updates once the plugin is live"}</small>
-        </div>
+          <small>
+            {serverStatus.online
+              ? `${serverStatus.playersOnline}/${serverStatus.playersMax || "?"} playing${serverStatus.tps != null ? ` · ${serverStatus.tps.toFixed(1)} TPS` : ""}`
+              : serverStatus.configured
+                ? "No heartbeat from the server right now"
+                : "Waiting for the plugin heartbeat"}
+          </small>
+        </Link>
       </div>
 
-      <div className="tabs dash-tabs">
-        {tabs.map((t) => (
-          <Button
-            variant="ghost"
-            className={tab === t ? "selected" : ""}
-            onClick={() => { setTab(t); setMsg(""); }}
-            key={t}
-          >
-            {t}
-          </Button>
-        ))}
+      <div className="tabs dash-tabs" role="tablist">
+        {tabs.map((t) => {
+          const TabIcon = DASH_TAB_ICONS[t] ?? Activity;
+          return (
+            <Button
+              variant="ghost"
+              role="tab"
+              aria-selected={tab === t}
+              className={tab === t ? "selected" : ""}
+              onClick={() => { setTab(t); setMsg(""); }}
+              key={t}
+            >
+              <TabIcon size={14} /> {t}
+            </Button>
+          );
+        })}
       </div>
-      {msg && <div className="subtle-note">{msg}</div>}
+      {msg && <div className="dash-msg" role="status">{msg}</div>}
+
+      <div className="dash-body">
 
       {tab === "Overview" && (
         <>
@@ -1689,6 +1727,7 @@ export function DashboardPage() {
         </>
         )
       )}
+      </div>
     </>
   );
 }
@@ -1744,6 +1783,7 @@ export function DonatePage() {
 
 // ---------------------------------------------------------------- status
 export function StatusPage() {
+  useSyncExternalStore(subscribeLive, liveVersion, () => 0);
   return (
     <>
       <PageHeading title="Server status" subtitle="A pulse check on the world.">
@@ -1760,27 +1800,27 @@ export function StatusPage() {
         values={[
           {
             label: "Online players",
-            value: serverStatus.online ? `${siteMeta.online} / ${serverStatus.playersMax || "?"}` : "0",
+            value: serverStatus.online ? `${serverStatus.playersOnline} / ${serverStatus.playersMax || "?"}` : "0",
             icon: Users,
-            note: serverStatus.configured ? "Live ping" : "Set MC_HOST to connect",
+            note: serverStatus.source === "plugin" ? "From the plugin heartbeat" : serverStatus.configured ? "Live ping" : "Waiting for the plugin heartbeat",
           },
           {
             label: "Latency",
             value: serverStatus.ms ? `${serverStatus.ms} ms` : "—",
             icon: Zap,
-            note: "Ping to the server",
+            note: serverStatus.ms ? "Ping to the server" : "Needs MC_HOST on the site for latency",
           },
           {
             label: "Version",
             value: serverStatus.version || "—",
             icon: Globe,
-            note: "From the server list ping",
+            note: serverStatus.source === "plugin" ? "Reported by the plugin" : "From the server list ping",
           },
           {
-            label: "TPS / MSPT",
-            value: "—",
-            icon: Zap,
-            note: "Arrives with the plugin telemetry feed",
+            label: "TPS",
+            value: serverStatus.tps != null ? serverStatus.tps.toFixed(1) : "—",
+            icon: Gauge,
+            note: serverStatus.tps != null ? "Ticks per second (20 is perfect)" : "Shows while the plugin is reporting",
           },
         ]}
       />
@@ -1836,9 +1876,13 @@ export function StatusPage() {
         </section>
       </div>
       <p className="subtle-note">
-        {isLive()
-          ? "Status comes from a live ping to the server. TPS, memory and CPU arrive with the plugin's telemetry feed."
-          : "The backend is offline — connect the site to the server database to see live numbers."}
+        {serverStatus.source === "plugin"
+          ? `Live from the server plugin${serverStatus.heartbeatAge != null ? ` (last beat ${serverStatus.heartbeatAge}s ago)` : ""}.`
+          : serverStatus.source === "ping"
+            ? "Live from a direct ping of the Minecraft server."
+            : isLive()
+              ? "No heartbeat from the server plugin in the last 90 seconds, and no ping is configured. Check the plugin's API url + secret."
+              : "The API is unreachable right now — numbers will return when it wakes up."}
       </p>
     </>
   );
@@ -1847,7 +1891,18 @@ export function StatusPage() {
 // ===========================================================================
 // SERVER PANEL (owners only) — live console, files, power, backups
 // ===========================================================================
+// Color a console line by log level so problems stand out.
+function logTone(line: string) {
+  if (/\b(ERROR|SEVERE|FATAL)\b|Exception/.test(line)) return "err";
+  if (/\bWARN(ING)?\b/.test(line)) return "warn";
+  if (/joined the game|left the game|logged in|lost connection/.test(line)) return "join";
+  return "";
+}
+
 export function ServerPage() {
+  // re-render in place when session data refreshes (no remount, so console,
+  // file edits and scroll position survive the 30s refresh)
+  useSyncExternalStore(subscribeLive, liveVersion, () => 0);
   const [status, setStatus] = useState<any>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [command, setCommand] = useState("");
@@ -1856,26 +1911,40 @@ export function ServerPage() {
   const [file, setFile] = useState<{ path: string; content: string } | null>(null);
   const [backups, setBackups] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
+  const [panelErr, setPanelErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const consoleRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const polling = useRef(false);
 
-  const call = async (op: string, extra: Record<string, any> = {}) => {
-    setBusy(true);
+  // quiet = background poll: no busy flicker, errors go to the banner only
+  const call = async (op: string, extra: Record<string, any> = {}, quiet = false) => {
+    if (!quiet) setBusy(true);
     try {
       const r = await doAction(op, extra);
-      if (!r.ok) setMsg(r.msg || "Panel request failed.");
+      if (!r.ok) {
+        if (quiet) setPanelErr(r.msg || "Panel request failed.");
+        else setMsg(r.msg || "Panel request failed.");
+      } else if (quiet) {
+        setPanelErr("");
+      }
       return r;
     } finally {
-      setBusy(false);
+      if (!quiet) setBusy(false);
     }
   };
 
-  const refreshStatus = async () => {
-    const r = await call("panel_status");
+  const refreshStatus = async (quiet = false) => {
+    const r = await call("panel_status", {}, quiet);
     if (r.ok) setStatus(r);
   };
-  const refreshLog = async () => {
-    const r = await call("panel_log", { lines: 60 });
+  const refreshLog = async (quiet = false) => {
+    const r = await call("panel_log", { lines: 80 }, quiet);
     if (r.ok && Array.isArray(r.lines)) setLogLines(r.lines);
+  };
+  const refreshBackups = async (quiet = false) => {
+    const r = await call("panel_backups", {}, quiet);
+    if (r.ok) setBackups(r.backups || []);
   };
   const runCommand = async () => {
     const cmd = command.trim();
@@ -1898,29 +1967,39 @@ export function ServerPage() {
     setMsg(r.ok ? `Saved ${file.path}` : r.msg || "Save failed.");
   };
   const power = async (action: string) => {
+    if ((action === "stop" || action === "restart") &&
+        !window.confirm(`${action === "stop" ? "Stop" : "Restart"} the Minecraft server? Everyone online will be disconnected.`)) return;
     const r = await call("panel_power", { action });
-    setMsg(r.ok ? `Power: ${action} done.` : r.msg || "Power action failed.");
-    refreshStatus();
+    setMsg(r.ok ? `Power: ${action} sent.` : r.msg || "Power action failed.");
+    refreshStatus(true);
   };
   const backup = async () => {
     const r = await call("panel_backup");
     setMsg(r.ok ? `Backup created: ${r.file} (${r.size_kb} KB)` : r.msg || "Backup failed.");
-    refreshBackups();
-  };
-  const refreshBackups = async () => {
-    const r = await call("panel_backups");
-    if (r.ok) setBackups(r.backups || []);
+    refreshBackups(true);
   };
 
+  // load once the owner session is known, then poll quietly
   useEffect(() => {
     if (!me.admin) return;
-    refreshStatus();
-    refreshLog();
-    refreshBackups();
-    const t = setInterval(() => { refreshStatus(); refreshLog(); }, 5000);
+    refreshStatus(true);
+    refreshLog(true);
+    refreshBackups(true);
+    openDir(".");
+    const t = setInterval(async () => {
+      if (polling.current) return; // never stack requests on a slow agent
+      polling.current = true;
+      try { await Promise.all([refreshStatus(true), refreshLog(true)]); } finally { polling.current = false; }
+    }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [me.admin]);
+
+  // keep the console pinned to the newest line unless the owner scrolled up
+  useEffect(() => {
+    const el = consoleRef.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [logLines]);
 
   if (!me.admin)
     return (
@@ -1934,72 +2013,125 @@ export function ServerPage() {
       </>
     );
 
+  const running = !!status?.running;
+  const dir = !path || path === "." ? "" : path;
+  const parent = dir.includes("/") ? dir.split("/").slice(0, -1).join("/") : ".";
+  const memPct = status && status.mem_total_mb ? Math.min(100, Math.round((status.mem_used_mb / status.mem_total_mb) * 100)) : 0;
+
   return (
     <>
-      <PageHeading title="Server panel." subtitle="Console, files, power and backups — straight from the VPS." />
-      {msg && <div className="subtle-note">{msg}</div>}
+      <PageHeading eyebrow="OWNERS ONLY" title="Server panel." subtitle="Console, files, power and backups — straight from the VPS.">
+        <span className="status-pill">
+          <span className={`server-dot ${running ? "" : "offline"}`} />
+          {status ? (running ? "Running" : "Stopped") : "Checking…"}
+        </span>
+      </PageHeading>
+
+      {panelErr && (
+        <div className="dash-msg err" role="alert">
+          Can't reach the panel agent: {panelErr}. Check PANEL_AGENT_URL / PANEL_AGENT_SECRET on the API and that the agent is running on the VPS.
+        </div>
+      )}
+      {msg && <div className="dash-msg" role="status">{msg}</div>}
 
       <Stats
         values={[
-          { label: "Server", value: status?.running ? "Running" : "Stopped", icon: Activity, note: `screen: ${status?.screen ?? "—"}` },
+          { label: "Server", value: status ? (running ? "Running" : "Stopped") : "—", icon: Activity, note: serverStatus.online ? `${serverStatus.playersOnline}/${serverStatus.playersMax || "?"} players online` : `screen: ${status?.screen ?? "—"}` },
           { label: "CPU load", value: status ? `${status.cpu_pct}` : "—", icon: Gauge, note: "1-min load average" },
-          { label: "Memory", value: status ? `${status.mem_used_mb} / ${status.mem_total_mb} MB` : "—", icon: MemoryStick, note: "VPS total" },
+          { label: "Memory", value: status ? `${status.mem_used_mb} / ${status.mem_total_mb} MB` : "—", icon: MemoryStick, note: status ? `${memPct}% of the VPS in use` : "VPS total" },
           { label: "Uptime", value: status ? `${Math.floor((status.uptime_s || 0) / 3600)}h` : "—", icon: Clock, note: "VPS uptime" },
         ]}
       />
 
-      <div className="panel-grid">
-        <section className="panel-card">
-          <h3>Power</h3>
-          <div className="power-row">
-            <Button variant="outline" disabled={busy} onClick={() => power("start")}>Start</Button>
-            <Button variant="outline" disabled={busy} onClick={() => power("restart")}>Restart</Button>
-            <Button variant="outline" disabled={busy} onClick={() => power("stop")}>Stop</Button>
-            <Button disabled={busy} onClick={backup}>Backup world</Button>
+      <div className="srv-layout">
+        <section className="panel-card srv-console">
+          <div className="panel-head">
+            <h3><Terminal size={15} /> Console</h3>
+            <span className="panel-tag">live · 5s</span>
           </div>
-        </section>
-
-        <section className="panel-card">
-          <h3>Console</h3>
-          <div className="console-out">
-            {logLines.length ? logLines.map((l, i) => <div key={i}>{l}</div>) : <div className="muted">No log output yet.</div>}
+          <div
+            className="console-out"
+            ref={consoleRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+          >
+            {logLines.length
+              ? logLines.map((l, i) => <div key={i} className={`log-line ${logTone(l)}`}>{l}</div>)
+              : <div className="muted">No log output yet.</div>}
           </div>
-          <div className="link-claim-row">
+          <div className="console-input">
+            <span className="console-prompt">&gt;</span>
             <input
-              className="link-code-input"
-              style={{ flex: 1 }}
               placeholder="say Hello from the panel"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runCommand()}
+              aria-label="Console command"
             />
-            <Button disabled={busy} onClick={runCommand}>Run</Button>
+            <Button disabled={busy || !command.trim()} onClick={runCommand}><Send size={14} /> Run</Button>
           </div>
           <p className="muted">Runs as a real console command on the server (no slash needed).</p>
         </section>
 
-        <section className="panel-card">
-          <h3>Files</h3>
-          <div className="link-claim-row">
+        <div className="srv-side">
+          <section className="panel-card">
+            <div className="panel-head"><h3><Zap size={15} /> Power</h3></div>
+            <div className="power-grid">
+              <Button variant="outline" className="power-btn start" disabled={busy || running} onClick={() => power("start")}><Play size={15} /> Start</Button>
+              <Button variant="outline" className="power-btn" disabled={busy} onClick={() => power("restart")}><RotateCw size={15} /> Restart</Button>
+              <Button variant="outline" className="power-btn stop" disabled={busy || (!!status && !running)} onClick={() => power("stop")}><Square size={15} /> Stop</Button>
+            </div>
+            <Button disabled={busy} onClick={backup}><Archive size={15} /> Backup world</Button>
+          </section>
+
+          <section className="panel-card">
+            <div className="panel-head">
+              <h3><HardDrive size={15} /> Backups</h3>
+              <button className="link-cancel" onClick={() => refreshBackups()} disabled={busy}>refresh</button>
+            </div>
+            {backups.length ? (
+              <div className="file-list">
+                {backups.map((b: any) => (
+                  <div key={b.name} className="file-row static"><Archive size={14} /> <span className="file-name">{b.name}</span> <span className="muted">{b.size_kb} KB</span></div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">No backups yet — make the first one.</p>
+            )}
+          </section>
+        </div>
+
+        <section className="panel-card srv-files">
+          <div className="panel-head"><h3><Folder size={15} /> Files</h3></div>
+          <div className="console-input">
+            <span className="console-prompt">/</span>
             <input
-              className="link-code-input"
-              style={{ flex: 1 }}
               placeholder="path (e.g. . or server.properties)"
               value={path}
               onChange={(e) => setPath(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && openDir(path)}
+              onKeyDown={(e) => e.key === "Enter" && openDir(path || ".")}
+              aria-label="Path"
             />
-            <Button variant="outline" disabled={busy} onClick={() => openDir(path)}>Browse</Button>
+            <Button variant="outline" disabled={busy} onClick={() => openDir(path || ".")}>Browse</Button>
           </div>
           {fileList && (
             <div className="file-list">
+              {dir && (
+                <button className="file-row" onClick={() => openDir(parent)}>
+                  <Folder size={14} /> <span className="file-name">..</span>
+                </button>
+              )}
               {fileList.map((f: any) => (
                 <button
                   key={f.name}
                   className="file-row"
-                  onClick={() => (f.dir ? openDir(`${path === "." || !path ? "" : path + "/"}${f.name}`) : openFile(`${path === "." || !path ? "" : path + "/"}${f.name}`))}
+                  onClick={() => (f.dir ? openDir(`${dir ? dir + "/" : ""}${f.name}`) : openFile(`${dir ? dir + "/" : ""}${f.name}`))}
                 >
-                  {f.dir ? "📁" : "📄"} {f.name} {f.dir ? "" : <span className="muted">{f.size_kb} KB</span>}
+                  {f.dir ? <Folder size={14} /> : <FileText size={14} />}
+                  <span className="file-name">{f.name}</span>
+                  {f.dir ? null : <span className="muted">{f.size_kb} KB</span>}
                 </button>
               ))}
             </div>
@@ -2010,29 +2142,15 @@ export function ServerPage() {
               <textarea
                 value={file.content}
                 onChange={(e) => setFile({ ...file, content: e.target.value })}
-                rows={10}
+                rows={12}
                 spellCheck={false}
               />
               <div className="power-row">
-                <Button disabled={busy} onClick={saveFile}>Save</Button>
+                <Button disabled={busy} onClick={saveFile}><Check size={14} /> Save</Button>
                 <Button variant="outline" onClick={() => setFile(null)}>Close</Button>
               </div>
             </div>
           )}
-        </section>
-
-        <section className="panel-card">
-          <h3>Backups</h3>
-          {backups.length ? (
-            <div className="file-list">
-              {backups.map((b: any) => (
-                <div key={b.name} className="file-row">🗄️ {b.name} <span className="muted">{b.size_kb} KB</span></div>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">No backups yet — make the first one.</p>
-          )}
-          <Button variant="outline" disabled={busy} onClick={refreshBackups}>Refresh</Button>
         </section>
       </div>
     </>

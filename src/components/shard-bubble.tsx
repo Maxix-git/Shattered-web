@@ -40,10 +40,14 @@ export function ShardBubble() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ message: text }),
-          signal: AbortSignal.timeout(25_000),
+          signal: AbortSignal.timeout(45_000),
         });
         const j = await r.json().catch(() => null);
-        if (j?.ok && j.reply) return j.reply;
+        if (j?.ok && j.reply) {
+          // keep the header honest: "AI assistant" only when Groq really answered
+          setMode(j.mode === "llm" ? "llm" : j.degraded ? "degraded" : "stub");
+          return j.reply;
+        }
         if (r.status === 503) return "I'm not connected to the server data yet. The owner needs to set SITE_API_URL on the site.";
       } catch {
         /* network error or timeout — retry once */
@@ -71,7 +75,15 @@ export function ShardBubble() {
             <Sparkles size={15} />
             <div>
               <strong>Shard</strong>
-              <small>{mode === "llm" ? "AI assistant" : mode === "stub" ? "Basic mode" : "Server assistant"}</small>
+              <small>
+                {mode === "llm"
+                  ? "AI assistant"
+                  : mode === "degraded"
+                    ? "AI offline · basic answers"
+                    : mode === "stub"
+                      ? "Basic mode"
+                      : "Server assistant"}
+              </small>
             </div>
             <button className="shard-close" onClick={() => setOpen(false)} aria-label="Close Shard">
               <X size={16} />
@@ -101,7 +113,6 @@ export function ShardBubble() {
       ) : (
         <button className="shard-fab" onClick={() => setOpen(true)} aria-label="Open Shard assistant">
           <Sparkles size={20} />
-          <span>Ask Shard</span>
         </button>
       )}
     </>

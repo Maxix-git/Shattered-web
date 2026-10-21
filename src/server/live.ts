@@ -69,27 +69,60 @@ async function status() {
   return data;
 }
 
-// ---------- Live payload: bot data + site-side server ping ----------
+// ---------- Live payload: API data + merged server status ----------
+// Server status has TWO independent signals, and the site now uses both:
+//   1. the plugin heartbeat stored by the API (works even when the Minecraft
+//      port is firewalled from Vercel, needs no MC_HOST)
+//   2. a direct server-list ping from this site (needs MC_HOST; gives latency)
+// The server counts as online if EITHER says so.
+function mergeStatus(ping: any, hb: any, apiPlayersOnline: number) {
+  const hbLive = !!hb?.live;
+  const online = !!ping?.online || hbLive;
+  let playersOnline = hbLive ? Number(hb.playersOnline) || 0 : Number(ping?.playersOnline) || 0;
+  if (online && playersOnline === 0 && apiPlayersOnline > 0) playersOnline = apiPlayersOnline;
+  return {
+    configured: !!ping?.configured || !!hb,
+    online,
+    host: ping?.host || "",
+    playersOnline,
+    playersMax: (hbLive ? Number(hb.playersMax) : 0) || Number(ping?.playersMax) || 0,
+    version: ping?.version || hb?.version || "",
+    ms: ping?.ms || 0,
+    tps: hbLive ? hb.tps : null,
+    motd: hbLive ? hb.motd : "",
+    source: hbLive ? "plugin" : ping?.online ? "ping" : "none",
+    heartbeatAge: hb ? Number(hb.ageSeconds) : null,
+    onlineNames: ping?.onlineNames || [],
+  };
+}
+
 export async function buildLive() {
-  const st = await status();
-  const onlineNames = (st as any).onlineNames || [] as string[];
+  // run the Minecraft ping and the API call in parallel (ping can take 4s)
+  const [pingRes, apiRes] = await Promise.allSettled([status(), rpc("live", null)]);
+  const ping: any = pingRes.status === "fulfilled" ? pingRes.value : null;
   let data: any;
+  let apiDown = false;
   try {
-    data = await rpc("live", null);
+    if (apiRes.status !== "fulfilled") throw apiRes.reason;
+    data = apiRes.value;
     if (!data || !Array.isArray(data.players)) throw new Error("bad payload");
-    // overlay real online state from our own ping
+    const onlineNames: string[] = ping?.onlineNames || [];
+    // overlay real online state from our own ping, when it gave us names
     if (onlineNames.length) {
       data.players = data.players.map((p: any) => ({ ...p, online: onlineNames.includes(p.name) }));
     }
   } catch {
-    // bot unreachable: show an honest empty site with a live status badge
+    // API unreachable: show an honest empty site with a live status badge
+    apiDown = true;
     data = {
       players: [], factions: [], posts: [], news: [], feed: [], bounties: [], zones: [],
       meta: { players: 0, kills: 0, factions: 0, worldAgeDays: 0 },
       apiDown: true,
     };
   }
-  return { ...data, status: st };
+  const apiOnline = (data.players as any[]).filter((p) => p.online).length;
+  const { heartbeat, ...rest } = data;
+  return { ...rest, apiDown, status: mergeStatus(ping, heartbeat, apiOnline) };
 }
 
 // ---------- Session payload ----------
